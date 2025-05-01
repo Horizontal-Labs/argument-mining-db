@@ -1,5 +1,3 @@
-import sys 
-sys.path.append(r"C:\Users\ahmed\Desktop\Master_Studium\Workspace_Studium\Argument-Mining")
 import json
 from db import models
 from db.db import get_session
@@ -22,8 +20,10 @@ def add_topics(data: list[dict]) -> list[models.Domain]:
     return topic_cls
 
 def add_adus(data: list[dict], domain_name_to_id: dict) -> list[models.ADU]:
-    """Create ADU entries from premises and conclusions."""
+    """Create ADU entries from premises and unique conclusions (claims)."""
     adus = []
+    added_claims = set()  # Track claims we've already added
+
     for element in data:
         topic = element.get("conclusion")
         discussion_title = element.get("context", {}).get("discussionTitle")
@@ -35,34 +35,28 @@ def add_adus(data: list[dict], domain_name_to_id: dict) -> list[models.ADU]:
             print(f"Missing domain ID for topic: {topic}")
             continue
 
-        for idx, premise in enumerate(element.get("premises", [])):
+        # Add each premise (duplicates are allowed)
+        for premise in element.get("premises", []):
             text = premise.get("text")
-            stance = premise.get("stance")
-            if stance == "PRO":
-                adu_type = "stance_pro"
-            elif stance == "CON":
-                adu_type = "stance_con"
-            else:
-                print("Unknown stance type")
-                continue
-
             adus.append(models.ADU(
                 text=text,
-                type=adu_type,
+                type="premise",
                 domain_id=domain_id
             ))
 
-        # Add the claim (conclusion) as a separate ADU
-        adus.append(models.ADU(
-            text=topic,
-            type="claim",
-            domain_id=domain_id
-        ))
+        # Only add the claim once (per unique topic text)
+        if topic not in added_claims:
+            adus.append(models.ADU(
+                text=topic,
+                type="claim",
+                domain_id=domain_id
+            ))
+            added_claims.add(topic)
 
     return adus
 
 def add_relationships(data: list[dict], adu_text_to_id: dict, domain_name_to_id: dict) -> list[models.Relationship]:
-    """Create Relationship entries from previous/current argument links."""
+    """Create Relationship entries by linking premises to their claim using stance."""
     relationships = []
     for element in data:
         topic = element.get("conclusion")
@@ -70,31 +64,64 @@ def add_relationships(data: list[dict], adu_text_to_id: dict, domain_name_to_id:
         if topic != discussion_title:
             continue
 
-        from_adu_key = element.get("context", {}).get("previousArgumentInSourceId")
-        to_adu_key = element.get("id")
-
-        from_adu_id = adu_text_to_id.get(from_adu_key)
-        to_adu_id = adu_text_to_id.get(to_adu_key)
-
-        if not from_adu_id or not to_adu_id:
-            continue
-
         domain_id = domain_name_to_id.get(topic)
         if not domain_id:
             continue
 
-        relationships.append(models.Relationship(
-            from_adu_id=from_adu_id,
-            to_adu_id=to_adu_id,
-            category="support",  # could vary depending on stance logic
-            domain_id=domain_id
-        ))
+        claim_adu_id = adu_text_to_id.get(topic)
+        if not claim_adu_id:
+            print(f"Claim ADU not found for topic: {topic}")
+            continue
+
+        for premise in element.get("premises", []):
+            text = premise.get("text")
+            stance = premise.get("stance")
+
+            if stance == "PRO":
+                category = "stance_pro"
+            elif stance == "CON":
+                category = "stance_con"
+            else:
+                print(f"Unknown stance for premise: {text}")
+                continue
+
+            premise_adu_id = adu_text_to_id.get(text)
+            if not premise_adu_id:
+                print(f"Premise ADU not found for text: {text}")
+                continue
+
+            relationships.append(models.Relationship(
+                from_adu_id=premise_adu_id,
+                to_adu_id=claim_adu_id,
+                category=category,
+                domain_id=domain_id
+            ))
 
     return relationships
 
+def commit_in_batches(session, objects, size=5000):
+    """
+    Bulk-save in chunks of size.
+    """
+    total = len(objects)
+    batch_num = 1
+
+    for i in range(0, total, size):
+        batch = objects[i : i + size]
+        start, end = i + 1, i + len(batch)
+
+        print(f"[Batch {batch_num}] Bulk‐saving records {start}–{end} of {total}…")
+        session.bulk_save_objects(batch)
+        session.commit()
+        print(f"[Batch {batch_num}] Committed {len(batch)} records.\n")
+
+        batch_num += 1
+
+    print("All batches committed.")
+
 def main():
     # Load and sort data
-    with open(r"C:\Users\ahmed\Desktop\Master_Studium\GP\Data-Sets\arg-me\args-me-1.0-cleaned.json", "r") as file:
+    with open(r"args-me-1.0-cleaned.json", "r") as file: #NOTE: Could not update because the file is so big. Source: https://zenodo.org/records/4139439
         data = json.load(file)
 
     arguments = data["arguments"]
@@ -104,6 +131,8 @@ def main():
 
     # Add Domains 
     domain_objs = add_topics(sorted_data)
+    print(f"{len(domain_objs)} Topics are found in the dataset")
+
     session.add_all(domain_objs)
     session.commit()
 
@@ -115,10 +144,11 @@ def main():
 
     # Add ADUs 
     adu_objs = add_adus(sorted_data, domain_name_to_id)
-    session.add_all(adu_objs)
-    session.commit()
-    
+    print(f"{len(adu_objs)} ADU Objects are found in the dataset")
+
+    commit_in_batches(session,adu_objs)
     print("All ADUs are added correctly")
+
     # Map unique text or argument IDs to ADU IDs (for relationship mapping)
     adu_text_to_id = {
         adu.text: adu.id for adu in session.query(models.ADU).all()
@@ -126,8 +156,9 @@ def main():
 
     # Add Relationships
     relationship_objs = add_relationships(sorted_data, adu_text_to_id, domain_name_to_id)
-    session.add_all(relationship_objs)
-    session.commit()
+    print(f"{len(relationship_objs)} Relationships are found in the dataset")
+
+    commit_in_batches(session,relationship_objs)
     print("All Relationships are added correctly")
 
 if __name__ == "__main__":
