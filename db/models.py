@@ -1,12 +1,13 @@
 from sqlalchemy import (
     Integer,
     String,
-    Text,
     Integer,
     ForeignKey,
     CheckConstraint
 )
+
 from sqlalchemy.orm import mapped_column, Mapped
+from sqlalchemy.dialects.mysql import MEDIUMTEXT
 
 from .base import Base 
 
@@ -28,7 +29,7 @@ class ADU(Base):
     __tablename__ = 'adu'
     
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement="auto")
-    text: Mapped[str] = mapped_column(Text, nullable=False)
+    text: Mapped[str] = mapped_column(MEDIUMTEXT, nullable=False)
     type: Mapped[str] = mapped_column(String(16), nullable=False)
     domain_id: Mapped[int] = mapped_column(ForeignKey('domain.id'), nullable=False)
     
