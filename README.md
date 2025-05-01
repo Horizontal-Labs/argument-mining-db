@@ -61,6 +61,5 @@ All database models live under `db/models.py`. Sessions and engine configuration
 
 Below is the current ER-diagram of our database (exported from `Schema AM.drawio`).
 
-<br/>
-![Database Schema](docs/images/Schema_AM.drawio.png)  
+![Database Schema](./Schema%20AM.drawio.png)  
 *Figure 1: Database schema*
