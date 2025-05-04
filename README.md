@@ -43,7 +43,7 @@ pip install -r requirements.txt
 Import and use the `db` package to get a session and interact with the hosted database:
 
 ```python
-from db import get_engine, get_session, get_db_session
+from db.db import get_engine, get_session, get_db_session
 
 # Get a session
 session = get_session()
