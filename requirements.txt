@@ -10,3 +10,4 @@ six==1.17.0
 SQLAlchemy==2.0.40
 typing_extensions==4.13.2
 tzdata==2025.2
+mariadb

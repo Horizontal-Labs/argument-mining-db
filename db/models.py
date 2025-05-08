@@ -17,7 +17,7 @@ class Domain(Base):
     id: Mapped[int] = mapped_column(primary_key=True,autoincrement="auto")
     domain_name: Mapped[str] = mapped_column(String(256), nullable=False)
 
-    def __repr__(self): 
+    def __str__(self): 
         return (
             f"domain_id: {self.id} "
             f"domain_name: {self.domain_name}"
@@ -37,7 +37,7 @@ class ADU(Base):
     CheckConstraint("type IN ('premise', 'claim')", name="check_type_valid"),
     )
     
-    def __repr__(self): 
+    def __str__(self): 
         return (
             f"ADU with the id {self.id} "
             f"text: {self.text} "
@@ -57,7 +57,7 @@ class Relationship(Base):
     __table_args__ = (
     CheckConstraint("category IN ('support', 'stance_pro', 'stance_con')", name="check_category_valid"),
     )
-    def __repr__(self): 
+    def __str__(self): 
         return (
             f"Id: {self.id} "
             f"From adu: {self.from_adu_id} "

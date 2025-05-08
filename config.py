@@ -3,4 +3,4 @@ HOST = "argumentmining.ddns.net:3306"
 USER = "guidedproject"
 PW = "guidedproject"
 
-DB_URI = f'mysql+mysqlconnector://{USER}:{PW}@{HOST}/{DB}'
+DB_URI = f'mariadb+mariadbconnector://{USER}:{PW}@{HOST}/{DB}'
