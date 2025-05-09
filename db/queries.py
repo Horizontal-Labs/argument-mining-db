@@ -41,6 +41,7 @@ def _get_claims(session, training: bool = True) -> list[ADU]:
 
 def _get_data(session, training: bool = True) -> tuple[list[ADU], list[ADU], list[str]]:
     """Get tuples of (claims, premises, relationship_category (stance_pro/stance_con) )."""
+
     # Fetch claims
     claims = _get_claims(session, training)
     ids = [c.id for c in claims]
@@ -125,6 +126,7 @@ def get_test_claims() -> list[ADU]:
 
 def get_training_data() -> tuple[list[ADU], list[ADU], list[str]]:
     """Return (claims, premises, relationship_category (stance_pro/stance_con) ) for training split, using cache if enabled and fresh."""
+
     with get_session() as session:
         if not CACHE_ENABLED:
             return _get_data(session, training=True)
@@ -140,6 +142,7 @@ def get_training_data() -> tuple[list[ADU], list[ADU], list[str]]:
 
 def get_test_data() -> tuple[list[ADU], list[ADU], list[str]]:
     """Return (claims, premises, relationship_category (stance_pro/stance_con) ) for test split, using cache if enabled and fresh."""
+
     with get_session() as session:
         if not CACHE_ENABLED:
             return _get_data(session, training=False)
