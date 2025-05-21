@@ -31,19 +31,30 @@ def _make_claims_query(session):
     )
 
 
-def _get_claims(session, training: bool = True) -> list[ADU]:
-    """Get claims split by training/test set, reusing the passed-in session."""
+def _get_claims(session, split: str = 'training') -> list[ADU]:
+    """
+    Get claims split into 'training', 'test', or 'benchmark'.
+    """
     q = _make_claims_query(session)
     total = q.count()
-    split = int(total * 0.8)
-    return q.limit(split).all() if training else q.offset(split).all()
+    training_split = int(total * 0.7)
+    test_split = int(total * 0.9)
+
+    if split == 'training':
+        return q.limit(training_split).all()
+    elif split == 'test':
+        return q.offset(training_split).limit(test_split - training_split).all()
+    elif split == 'benchmark':
+        return q.offset(test_split).all()
+    else:
+        raise ValueError("Invalid split. Must be 'training', 'test', or 'benchmark'")
 
 
-def _get_data(session, training: bool = True) -> tuple[list[ADU], list[ADU], list[str]]:
+def _get_data(session, split: str = 'training') -> tuple[list[ADU], list[ADU], list[str]]:
     """Get tuples of (claims, premises, relationship_category (stance_pro/stance_con) )."""
 
     # Fetch claims
-    initial_claims = _get_claims(session, training)
+    initial_claims = _get_claims(session, split)
     ids = [c.id for c in initial_claims]
 
     # Fetch related premises
@@ -134,9 +145,10 @@ def get_training_claims() -> list[ADU]:
         cache = _load_cache(CLAIMS_CACHE_FILE)
         if cache and cache.get('total') == total:
             return cache['training']
-        training = _get_claims(session, training=True)
-        test_    = _get_claims(session, training=False)
-        _save_cache(CLAIMS_CACHE_FILE, {'total': total, 'training': training, 'test': test_})
+        training = _get_claims(session, split='training')
+        test_ = _get_claims(session, split='test')
+        benchmark = _get_claims(session, split='benchmark')
+        _save_cache(CLAIMS_CACHE_FILE, {'total': total, 'training': training, 'test': test_, 'benchmark': benchmark})
         return training
 
 
@@ -149,12 +161,26 @@ def get_test_claims() -> list[ADU]:
         cache = _load_cache(CLAIMS_CACHE_FILE)
         if cache and cache.get('total') == total:
             return cache['test']
-        training = _get_claims(session, training=True)
-        test_    = _get_claims(session, training=False)
-        _save_cache(CLAIMS_CACHE_FILE, {'total': total, 'training': training, 'test': test_})
+        training = _get_claims(session, split='training')
+        test_ = _get_claims(session, split='test')
+        benchmark = _get_claims(session, split='benchmark')
+        _save_cache(CLAIMS_CACHE_FILE, {'total': total, 'training': training, 'test': test_, 'benchmark': benchmark})
         return test_
 
-
+def get_benchmark_claims() -> list[ADU]:
+    with get_session() as session:
+        if not CACHE_ENABLED:
+            return _get_claims(session, split='benchmark')
+        total = session.query(ADU).filter(ADU.type == 'claim').count()
+        cache = _load_cache(CLAIMS_CACHE_FILE)
+        if cache and cache.get('total') == total and 'benchmark' in cache:
+            return cache['benchmark']
+        training = _get_claims(session, split='training')
+        test_ = _get_claims(session, split='test')
+        benchmark = _get_claims(session, split='benchmark')
+        _save_cache(CLAIMS_CACHE_FILE, {'total': total, 'training': training, 'test': test_, 'benchmark': benchmark})
+        return benchmark
+    
 def get_training_data() -> tuple[list[ADU], list[ADU], list[str]]:
     """Return (claims, premises, relationship_category (stance_pro/stance_con) ) for training split, using cache if enabled and fresh."""
 
@@ -166,9 +192,10 @@ def get_training_data() -> tuple[list[ADU], list[ADU], list[str]]:
         if cache and cache.get('db_total_claims_when_cached') == db_total_claims: # More robust cache check
             return cache['training']
         
-        train_ = _get_data(session, training=True)
-        test_  = _get_data(session, training=False) # You might want separate cache keys or structure for train/test data
-        _save_cache(DATA_CACHE_FILE, {'db_total_claims_when_cached': db_total_claims, 'training': train_, 'test': test_})
+        train_ = _get_data(session, split='training')
+        test_ = _get_data(session, split='test')
+        benchmark_ = _get_data(session, split='benchmark')
+        _save_cache(DATA_CACHE_FILE, {'db_total_claims_when_cached': db_total_claims, 'training': train_, 'test': test_, 'benchmark':benchmark_})
         return train_
 
 
@@ -184,7 +211,22 @@ def get_test_data() -> tuple[list[ADU], list[ADU], list[str]]:
             return cache['test']
 
         # If cache is invalid or test data not present, might need to re-fetch both if cache stores them together
-        train_ = _get_data(session, training=True) # Or fetch only test if cache structure allows
-        test_  = _get_data(session, training=False)
-        _save_cache(DATA_CACHE_FILE, {'db_total_claims_when_cached': db_total_claims, 'training': train_, 'test': test_})
+        train_ = _get_data(session, split='training') # Or fetch only test if cache structure allows
+        test_ = _get_data(session, split='test')
+        benchmark_ = _get_data(session, split='benchmark')
+        _save_cache(DATA_CACHE_FILE, {'db_total_claims_when_cached': db_total_claims, 'training': train_, 'test': test_, 'benchmark':benchmark_})
         return test_
+
+def get_benchmark_data() -> tuple[list[ADU], list[ADU], list[str]]:
+    with get_session() as session:
+        if not CACHE_ENABLED:
+            return _get_data(session, split='benchmark')
+        total = session.query(ADU).filter(ADU.type == 'claim').count()
+        cache = _load_cache(DATA_CACHE_FILE)
+        if cache and cache.get('db_total_claims_when_cached') == total and 'benchmark' in cache:
+            return cache['benchmark']
+        train_ = _get_data(session, split='training')
+        test_ = _get_data(session, split='test')
+        benchmark_ = _get_data(session, split='benchmark')
+        _save_cache(DATA_CACHE_FILE, {'db_total_claims_when_cached': total, 'training': train_, 'test': test_, 'benchmark': benchmark_})
+        return benchmark_
