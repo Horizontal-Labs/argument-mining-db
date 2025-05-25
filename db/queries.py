@@ -137,7 +137,7 @@ def _save_cache(file_path: Path, data):
 # --- Public API ---
 
 def get_training_claims() -> list[ADU]:
-    """Return the first 80% of claims, using cache if enabled and up-to-date."""
+    """Return the first 70% of claims, using cache if enabled and up-to-date."""
     with get_session() as session:
         if not CACHE_ENABLED:
             return _get_claims(session, training=True)
@@ -153,7 +153,7 @@ def get_training_claims() -> list[ADU]:
 
 
 def get_test_claims() -> list[ADU]:
-    """Return the last 20% of claims, using cache if enabled and up-to-date."""
+    """Return the second 20% of claims, using cache if enabled and up-to-date."""
     with get_session() as session:
         if not CACHE_ENABLED:
             return _get_claims(session, training=False)
@@ -168,6 +168,7 @@ def get_test_claims() -> list[ADU]:
         return test_
 
 def get_benchmark_claims() -> list[ADU]:
+    """Return the last 10% of claims, using cache if enabled and up-to-date."""
     with get_session() as session:
         if not CACHE_ENABLED:
             return _get_claims(session, split='benchmark')
@@ -218,6 +219,7 @@ def get_test_data() -> tuple[list[ADU], list[ADU], list[str]]:
         return test_
 
 def get_benchmark_data() -> tuple[list[ADU], list[ADU], list[str]]:
+    """Return (claims, premises, relationship_category (stance_pro/stance_con) ) for benchmark split, using cache if enabled and fresh."""
     with get_session() as session:
         if not CACHE_ENABLED:
             return _get_data(session, split='benchmark')
