@@ -232,3 +232,38 @@ def get_benchmark_data() -> tuple[list[ADU], list[ADU], list[str]]:
         benchmark_ = _get_data(session, split='benchmark')
         _save_cache(DATA_CACHE_FILE, {'db_total_claims_when_cached': total, 'training': train_, 'test': test_, 'benchmark': benchmark_})
         return benchmark_
+
+def get_sharded_training_data(max_per_shard: int, num_shards: int) -> list[tuple[list[ADU], list[ADU], list[str]]]:
+    """
+    Return a list of `num_shards` tuples (claims, premises, categories), each containing
+    exactly `max_per_shard` items, drawn consecutively from the training split.
+
+    Raises:
+        ValueError: if max_per_shard <= 0, num_shards <= 0,
+                    or nicht genug Daten, um alle Shards komplett zu füllen.
+    """
+    if max_per_shard <= 0 or num_shards <= 0:
+        raise ValueError("max_per_shard und num_shards müssen positive Ganzzahlen sein.")
+    
+    # Holt alle Trainingsdaten
+    claims, premises, categories = get_training_data()
+    total = len(claims)
+    required = max_per_shard * num_shards
+    
+    if total < required:
+        raise ValueError(
+            f"Nicht genug Trainingsdaten: benötigt {required}, vorhanden {total}."
+        )
+    
+    shards: list[tuple[list[ADU], list[ADU], list[str]]] = []
+    for i in range(num_shards):
+        start = i * max_per_shard
+        end = start + max_per_shard
+        # Die Slices haben hier garantiert die Länge max_per_shard
+        shards.append((
+            claims[start:end],
+            premises[start:end],
+            categories[start:end]
+        ))
+    
+    return shards
