@@ -12,7 +12,7 @@ from .db import get_session
 from .models import ADU, Relationship
 from .config import CACHE_ENABLED
 from collections import defaultdict
-
+from .quality_data import data
 # --- Cache configuration ---
 CACHE_DIR = Path(__file__).resolve().parent.parent / ".cache"
 CACHE_DIR.mkdir(exist_ok=True)
@@ -267,3 +267,93 @@ def get_sharded_training_data(max_per_shard: int, num_shards: int) -> list[tuple
         ))
     
     return shards
+
+def get_benchmark_data_details(number_of_premises: int, specific_ids: list[int] = None) -> tuple[list[ADU], list[list[ADU]], list[list[str]]]:
+    """
+    Return (claims, premises_list, categories_list) for the benchmark split (last 10% of claims),
+    with up to `number_of_premises` premises per claim. If `specific_ids` is provided, only claims
+    with those IDs are returned. If a claim has fewer premises than `number_of_premises`, all available
+    premises are returned.
+    """
+    with get_session() as session:
+        claims = _get_claims(session, split='benchmark')
+        if specific_ids:
+            claims = [c for c in claims if c.id in specific_ids]
+        claim_ids = [c.id for c in claims]
+        rows = (
+            session
+            .query(ADU, Relationship.category, Relationship.to_adu_id)
+            .join(Relationship, Relationship.from_adu_id == ADU.id)
+            .filter(ADU.type == 'premise', Relationship.to_adu_id.in_(claim_ids))
+            .all()
+        )
+        premises, categories, to_ids = zip(*rows) if rows else ([], [], [])
+        grouped = defaultdict(list)
+        for premise, cat, cid in zip(premises, categories, to_ids):
+            grouped[cid].append((premise, cat))
+
+        output_claims = []
+        output_premises = []
+        output_categories = []  
+        for claim in claims:
+            output_claims.append(claim)
+            items = grouped.get(claim.id, [])
+            if number_of_premises <= 0:
+                limited = []
+            else:
+                limited = items[:number_of_premises]
+            ps = [p for p, _ in limited]
+            cs = [cat for _, cat in limited]
+            output_premises.append(ps)
+            output_categories.append(cs)
+
+        return output_claims, output_premises, output_categories
+    
+def get_quality_data(claims_premises_dict: dict[int, list[int]]=data) -> tuple[list[ADU], list[list[ADU]], list[list[str]]]:
+    """
+    Return (claims, premises_list, categories_list) for given claim-premise mappings.
+    The input is a dictionary where the key is a claim_id and the value is a list of premise_ids.
+    """
+    with get_session() as session:
+        claim_ids = list(claims_premises_dict.keys())
+        premise_ids = list({pid for pids in claims_premises_dict.values() for pid in pids})
+        claims = session.query(ADU).filter(ADU.id.in_(claim_ids)).all()
+        claims_by_id = {c.id: c for c in claims}
+        premises = session.query(ADU).filter(ADU.id.in_(premise_ids)).all()
+        premises_by_id = {p.id: p for p in premises}
+        rows = (
+            session
+            .query(Relationship.from_adu_id, Relationship.to_adu_id, Relationship.category)
+            .filter(
+                Relationship.to_adu_id.in_(claim_ids),
+                Relationship.from_adu_id.in_(premise_ids)
+            )
+            .all()
+        )
+        category_lookup = {(from_id, to_id): cat for from_id, to_id, cat in rows}
+        output_claims = []
+        output_premises = []
+        output_categories = []
+
+        for claim_id, premise_list in claims_premises_dict.items():
+            claim = claims_by_id.get(claim_id)
+            if not claim:
+                continue 
+
+            current_premises = []
+            current_categories = []
+
+            for pid in premise_list:
+                premise = premises_by_id.get(pid)
+                if not premise:
+                    continue  # Skip if premise is missing
+
+                current_premises.append(premise)
+                category = category_lookup.get((pid, claim_id), None)
+                current_categories.append(category)
+
+            output_claims.append(claim)
+            output_premises.append(current_premises)
+            output_categories.append(current_categories)
+
+        return output_claims, output_premises, output_categories
