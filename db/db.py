@@ -1,11 +1,12 @@
 from .config import DB_URI
 from sqlalchemy import create_engine, Engine
 from sqlalchemy.orm import sessionmaker, scoped_session
+from typing import Optional
 
-engine: Engine | None = None
+engine: Optional[Engine] = None
 
 # Use scoped_session to ensure thread safety
-SessionLocal: scoped_session | None = None
+SessionLocal: Optional[scoped_session] = None
 
 
 def get_engine():
